@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuratore Ponte BIM - VisionOS Style</title>
+    <!-- SheetJS for Excel Import -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* --- Reset & Base --- */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', 'Roboto', 'Segoe UI', sans-serif;
+            background-color: #121212;
+            /* Dark background behind canvas */
+            color: white;
+        }
+
+        /* --- 3D Canvas --- */
+        #viewer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            outline: none;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.7);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* --- Glassmorphism Panel Style --- */
+        .glass-panel {
+            background: rgba(30, 30, 30, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border-radius: 24px;
+            color: white;
+            z-index: 10;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+
+        /* --- Sidebar (Configurator) --- */
+        #sidebar {
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            bottom: 20px;
+            width: 340px;
+            padding: 0;
+            /* Padding handled by sections */
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #sidebar::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+
+        /* --- Accordion Styles --- */
+        .accordion-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .accordion-section:last-child {
+            border-bottom: none;
+        }
+
+        .accordion-header {
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+            transition: background 0.2s;
+        }
+
+        .accordion-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .accordion-icon {
+            transition: transform 0.3s ease;
+            width: 16px;
+            height: 16px;
+            opacity: 0.7;
+        }
+
+        .accordion-section.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .accordion-section.active .accordion-content {
+            max-height: 1000px;
+            /* Arbitrary large height */
+            transition: max-height 0.5s ease-in;
+        }
+
+        .content-padding {
+            padding: 20px;
+        }
+
+        /* --- Inspector Panel --- */
+        #inspector {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            padding: 20px;
+            display: none;
+            /* Hidden by default */
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        /* --- Toolbar (Bottom Center) --- */
+        #toolbar {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            padding: 12px 24px;
+            border-radius: 50px;
+            /* Pill shape */
+            align-items: center;
+        }
+
+        /* --- Typography & Elements --- */
+        h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 20px 20px 10px 20px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #fff, #aaa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin-top: 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .control-group {
+            margin-bottom: 16px;
+        }
+
+        /* Inputs */
+        input[type="number"],
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            color: white;
+            font-family: inherit;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+
+        input[type="file"] {
+            padding: 6px;
+            font-size: 12px;
+        }
+
+        input[type="number"]:focus,
+        input[type="text"]:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Buttons */
+        .main-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        #btn-update {
+            background: rgba(255, 140, 0, 0.8);
+            /* Orange accent */
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+        }
+
+        #btn-update:hover {
+            background: rgba(255, 140, 0, 1);
+            transform: translateY(-1px);
+        }
+
+        .tool-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .tool-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2;
+        }
+
+        /* Type Selector */
+        .type-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .type-btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .type-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .type-btn.active {
+            background: rgba(255, 140, 0, 0.2);
+            border-color: rgba(255, 140, 0, 0.5);
+            color: white;
+        }
+
+        .type-icon {
+            width: 24px;
+            height: 24px;
+            margin-bottom: 2px;
+        }
+
+        .type-btn.active .type-icon {
+            color: #ff9f43;
+            /* Lighter orange */
+        }
+
+        /* Inspector Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            text-align: left;
+            padding: 10px 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 13px;
+        }
+
+        .data-table th {
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 500;
+        }
+
+        #inspector-close {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+
+        #inspector-close:hover {
+            opacity: 1;
+        }
+
+        .btn-small {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-small:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+
+    <!-- 3D Viewer Canvas -->
+    <div id="viewer">
+        <div id="loading">Caricamento 3D...</div>
+    </div>
+
+    <!-- Sidebar (Floating Glass Panel) -->
+    <aside id="sidebar" class="glass-panel">
+        <h1>Configuratore Ponte</h1>
+
+        <!-- Accordion Section 1: Tipologia & Dimensioni -->
+        <div class="accordion-section active">
+            <div class="accordion-header">
+                <span>⚙️ Tipologia & Dimensioni</span>
+                <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="accordion-content">
+                <div class="content-padding">
+                    <!-- Type Selector -->
+                    <label>Tipologia Strutturale</label>
+                    <div class="type-selector">
+                        <button class="type-btn active" data-type="A">
+                            <span class="type-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 9h20M4 9v11M20 9v11" />
+                                </svg>
+                            </span>
+                            <span class="type-label">Appoggiata</span>
+                        </button>
+                        <button class="type-btn" data-type="B">
+                            <span class="type-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 9h20M4 9v11M12 9v11M20 9v11" />
+                                </svg>
+                            </span>
+                            <span class="type-label">Continua</span>
+                        </button>
+                        <button class="type-btn" data-type="C">
+                            <span class="type-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 9h20M2 20c0-11 20-11 20 0M12 9v6" />
+                                </svg>
+                            </span>
+                            <span class="type-label">Arco</span>
+                        </button>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="spanLength">Lunghezza Campata (m)</label>
+                        <input type="number" id="spanLength" value="20" min="10" max="50">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="pierHeight">Altezza Piloni (m)</label>
+                        <input type="number" id="pierHeight" value="10" min="5" max="20">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="deckWidth">Larghezza Impalcato (m)</label>
+                        <input type="number" id="deckWidth" value="8" min="4" max="12">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accordion Section 2: Dettagli Costruttivi -->
+        <div class="accordion-section">
+            <div class="accordion-header">
+                <span>🏗️ Dettagli Costruttivi</span>
+                <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="accordion-content">
+                <div class="content-padding">
+                    <div class="control-group">
+                        <label for="numSpans">Numero Campate</label>
+                        <input type="number" id="numSpans" value="3" min="1" max="20">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="numCrossbeams">Travi Secondarie (per campata)</label>
+                        <input type="number" id="numCrossbeams" value="2" min="0" max="10">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="numMainBeams">Numero Travi Principali</label>
+                        <input type="number" id="numMainBeams" value="5" min="2" max="10">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="foundationHeight">Altezza Fondazione (m)</label>
+                        <input type="number" id="foundationHeight" value="1.0" min="0.5" max="3.0" step="0.1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accordion Section 3: Import Dati -->
+        <div class="accordion-section">
+            <div class="accordion-header">
+                <span>📂 Import Dati</span>
+                <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="accordion-content">
+                <div class="content-padding">
+                    <div class="control-group">
+                        <label for="fileInput">Carica Excel/CSV</label>
+                        <input type="file" id="fileInput" accept=".csv, .xlsx, .xls">
+                    </div>
+                    <p style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 5px;">
+                        Il file deve avere una colonna "ID" che corrisponde ai nomi degli oggetti 3D (es. Pila_1,
+                        Trave_Campata0_N1).
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding: 20px;">
+            <button id="btn-update" class="main-btn">Genera Modello</button>
+        </div>
+    </aside>
+
+    <!-- Toolbar (Bottom Floating Pill) -->
+    <div id="toolbar" class="glass-panel">
+        <button class="tool-btn" id="btn-reset" title="Reset Camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+            </svg>
+        </button>
+        <button class="tool-btn" id="btn-zoom-in" title="Zoom In">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+        </button>
+        <button class="tool-btn" id="btn-zoom-out" title="Zoom Out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Inspector Panel (Floating Glass) -->
+    <div id="inspector" class="glass-panel">
+        <h2>
+            Inspector
+            <span id="inspector-close">&times;</span>
+        </h2>
+        <table class="data-table" id="inspector-table">
+            <!-- Rows injected via JS -->
+        </table>
+        <button id="btn-add-attr" class="btn-small">+ Aggiungi Attributo</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Configuration ---
+        const BG_COLOR = 0x121212; // Dark background
+        const CONCRETE_COLOR = 0x999999;
+        const FOUNDATION_COLOR = 0x555555;
+        const HIGHLIGHT_COLOR = 0xff9f43; // Orange highlight
+
+        // --- Global Variables ---
+        let scene, camera, renderer, controls;
+        let bridgeGroup = null;
+        let raycaster, mouse;
+        let selectedObject = null;
+        let currentType = 'A';
+
+        // DOM Elements
+        const container = document.getElementById('viewer');
+        const inputSpan = document.getElementById('spanLength');
+        const inputHeight = document.getElementById('pierHeight');
+        const inputWidth = document.getElementById('deckWidth');
+        const inputNumSpans = document.getElementById('numSpans');
+        const inputNumCrossbeams = document.getElementById('numCrossbeams');
+        const inputNumMainBeams = document.getElementById('numMainBeams');
+        const inputFoundationHeight = document.getElementById('foundationHeight');
+        const fileInput = document.getElementById('fileInput');
+
+        const btnUpdate = document.getElementById('btn-update');
+        const btnReset = document.getElementById('btn-reset');
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const loadingEl = document.getElementById('loading');
+        const typeBtns = document.querySelectorAll('.type-btn');
+
+        const inspector = document.getElementById('inspector');
+        const inspectorTable = document.getElementById('inspector-table');
+        const inspectorClose = document.getElementById('inspector-close');
+        const btnAddAttr = document.getElementById('btn-add-attr');
+
+        // Accordion Elements
+        const accordionHeaders = document.querySelectorAll('.accordion-header');
+
+        init();
+        animate();
+
+        function init() {
+            // 1. Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(BG_COLOR);
+            scene.fog = new THREE.FogExp2(BG_COLOR, 0.005);
+
+            // 2. Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(30, 30, 60);
+            camera.lookAt(30, 0, 0);
+
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // 4. Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(30, 0, 0);
+
+            // 5. Helpers
+            const gridHelper = new THREE.GridHelper(500, 100, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            // 6. Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(50, 80, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -100;
+            dirLight.shadow.camera.right = 200;
+            dirLight.shadow.camera.top = 100;
+            dirLight.shadow.camera.bottom = -100;
+            scene.add(dirLight);
+
+            // 7. Interaction
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // 8. Initial Bridge
+            updateBridge();
+
+            if (loadingEl) loadingEl.style.display = 'none';
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            btnUpdate.addEventListener('click', updateBridge);
+            btnReset.addEventListener('click', onResetClick);
+            btnZoomIn.addEventListener('click', () => zoomCamera(-10));
+            btnZoomOut.addEventListener('click', () => zoomCamera(10));
+
+            renderer.domElement.addEventListener('click', onMouseClick);
+            inspectorClose.addEventListener('click', closeInspector);
+            btnAddAttr.addEventListener('click', addNewAttributeRow);
+
+            typeBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    typeBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentType = btn.dataset.type;
+                    updateBridge();
+                });
+            });
+
+            // Accordion Logic
+            accordionHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    const section = header.parentElement;
+                    section.classList.toggle('active');
+                });
+            });
+
+            // File Import Logic
+            fileInput.addEventListener('change', handleFileImport);
+        }
+
+        // --- Data Import Logic ---
+        function handleFileImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = e.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+
+                // Assume first sheet
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert to JSON
+                const json = XLSX.utils.sheet_to_json(worksheet);
+
+                applyImportedData(json);
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        function applyImportedData(data) {
+            if (!bridgeGroup) return;
+
+            let updateCount = 0;
+
+            // Map data by ID for faster lookup
+            const dataMap = {};
+            data.forEach(row => {
+                if (row.ID) {
+                    dataMap[row.ID] = row;
+                }
+            });
+
+            bridgeGroup.traverse(child => {
+                if (child.isMesh && child.name && dataMap[child.name]) {
+                    const newData = dataMap[child.name];
+
+                    // Merge userData
+                    Object.assign(child.userData, newData);
+
+                    // Remove internal ID from userData if redundant, or keep it.
+                    // Let's keep everything.
+
+                    updateCount++;
+                }
+            });
+
+            if (updateCount > 0) {
+                alert(`${updateCount} elementi aggiornati con successo!`);
+                // Refresh inspector if open
+                if (selectedObject) {
+                    renderInspectorTable(selectedObject.userData);
+                }
+            } else {
+                alert("Nessun elemento corrispondente trovato. Controlla gli ID nel file.");
+            }
+        }
+
+        function updateBridge() {
+            closeInspector();
+
+            const spanLength = parseFloat(inputSpan.value) || 20;
+            const pierHeight = parseFloat(inputHeight.value) || 10;
+            const deckWidth = parseFloat(inputWidth.value) || 8;
+            const numSpans = parseInt(inputNumSpans.value) || 3;
+            const numCrossbeams = parseInt(inputNumCrossbeams.value) || 2;
+            const numMainBeams = parseInt(inputNumMainBeams.value) || 5;
+            const foundationHeight = parseFloat(inputFoundationHeight.value) || 1.0;
+
+            if (bridgeGroup) {
+                scene.remove(bridgeGroup);
+                bridgeGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.geometry.dispose();
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(m => m.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                });
+            }
+
+            bridgeGroup = new THREE.Group();
+
+            const material = new THREE.MeshStandardMaterial({
+                color: CONCRETE_COLOR,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+
+            const foundationMat = new THREE.MeshStandardMaterial({
+                color: FOUNDATION_COLOR,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+
+            const params = {
+                L: spanLength,
+                H: pierHeight,
+                W: deckWidth,
+                N: numSpans,
+                nCross: numCrossbeams,
+                nMain: numMainBeams,
+                hFond: foundationHeight
+            };
+
+            switch (currentType) {
+                case 'A': generateTypeA(bridgeGroup, material, foundationMat, params); break;
+                case 'B': generateTypeB(bridgeGroup, material, foundationMat, params); break;
+                case 'C': generateTypeC(bridgeGroup, material, foundationMat, params); break;
+            }
+
+            scene.add(bridgeGroup);
+        }
+
+        // --- Helpers ---
+        function createFoundation(group, material, x, z, width, depth, height, id) {
+            const geo = new THREE.BoxGeometry(width, height, depth);
+            const mesh = new THREE.Mesh(geo, material.clone());
+            mesh.position.set(x, -height / 2, z);
+            mesh.receiveShadow = true;
+            mesh.name = id; // Set unique name
+            mesh.userData = { tipo: "Fondazione", dimensioni: `${width}x${depth}x${height}`, ID: id };
+            group.add(mesh);
+        }
+
+        function createCrossbeams(group, material, startX, spanLength, yPos, deckWidth, count, spanIndex) {
+            if (count <= 0) return;
+            const beamWidth = 0.5;
+            const beamHeight = 0.8;
+            const geo = new THREE.BoxGeometry(beamWidth, beamHeight, deckWidth - 0.5);
+            const step = spanLength / (count + 1);
+            for (let i = 1; i <= count; i++) {
+                const x = startX + (step * i);
+                const mesh = new THREE.Mesh(geo, material.clone());
+                mesh.position.set(x, yPos, 0);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                const id = `Traverso_Campata${spanIndex}_N${i}`;
+                mesh.name = id;
+                mesh.userData = { tipo: "Traverso", posizione: `X=${x.toFixed(1)}`, ID: id };
+                group.add(mesh);
+            }
+        }
+
+        // --- Generation Functions ---
+        function generateTypeA(group, material, foundationMat, p) {
+            const pierColWidth = 1.5;
+            const pierColDepth = 1.5;
+            const capHeight = 1.2;
+            const capDepth = 2.5;
+            const capWidth = p.W + 1;
+            const beamHeight = 1.5;
+            const beamWidth = 0.5;
+            const bearingHeight = 0.2;
+            const bearingSize = 0.5;
+            const bearingMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+
+            for (let i = 0; i <= p.N; i++) {
+                const xPos = i * p.L;
+                createFoundation(group, foundationMat, xPos, 0, 5, p.W + 2, p.hFond, `Fondazione_${i}`);
+
+                const colOffset = p.W / 4;
+                const colGeo = new THREE.BoxGeometry(pierColDepth, p.H, pierColWidth);
+
+                const col1 = new THREE.Mesh(colGeo, material.clone());
+                col1.position.set(xPos, p.H / 2, -colOffset);
+                col1.castShadow = true;
+                col1.name = `Pila_${i}_L`;
+                col1.userData = { tipo: "Fusto Pila", id: `${i + 1}-L`, altezza: p.H, ID: col1.name };
+                group.add(col1);
+
+                const col2 = new THREE.Mesh(colGeo, material.clone());
+                col2.position.set(xPos, p.H / 2, colOffset);
+                col2.castShadow = true;
+                col2.name = `Pila_${i}_R`;
+                col2.userData = { tipo: "Fusto Pila", id: `${i + 1}-R`, altezza: p.H, ID: col2.name };
+                group.add(col2);
+
+                const capGeo = new THREE.BoxGeometry(capDepth, capHeight, capWidth);
+                const cap = new THREE.Mesh(capGeo, material.clone());
+                cap.position.set(xPos, p.H + (capHeight / 2), 0);
+                cap.castShadow = true;
+                cap.name = `Pulvino_${i}`;
+                cap.userData = { tipo: "Pulvino", id: `P-${i + 1}`, dimensioni: `${capDepth}x${capWidth}x${capHeight}`, ID: cap.name };
+                group.add(cap);
+            }
+
+            const deckY = p.H + capHeight + bearingHeight + (beamHeight / 2);
+            const bearingY = p.H + capHeight + (bearingHeight / 2);
+
+            for (let i = 0; i < p.N; i++) {
+                const spanStartX = i * p.L;
+                const spanCenterX = spanStartX + (p.L / 2);
+                if (p.nMain > 1) {
+                    const spacing = (p.W - beamWidth) / (p.nMain - 1);
+                    const startZ = -(p.W - beamWidth) / 2;
+                    const beamGeo = new THREE.BoxGeometry(p.L - 0.2, beamHeight, beamWidth);
+                    const bearingGeo = new THREE.BoxGeometry(bearingSize, bearingHeight, bearingSize);
+
+                    for (let b = 0; b < p.nMain; b++) {
+                        const zPos = startZ + (b * spacing);
+                        const beam = new THREE.Mesh(beamGeo, material.clone());
+                        beam.position.set(spanCenterX, deckY, zPos);
+                        beam.castShadow = true;
+                        beam.name = `Trave_Campata${i}_N${b + 1}`;
+                        beam.userData = { tipo: "Trave Principale", id: `T-${i + 1}-${b + 1}`, luce: p.L, ID: beam.name };
+                        group.add(beam);
+
+                        const bearingStart = new THREE.Mesh(bearingGeo, bearingMat.clone());
+                        bearingStart.position.set(spanStartX + 0.4, bearingY, zPos);
+                        bearingStart.name = `Appoggio_Campata${i}_N${b + 1}_Start`;
+                        bearingStart.userData = { tipo: "Appoggio", posizione: "Inizio", trave: `T-${i + 1}-${b + 1}`, ID: bearingStart.name };
+                        group.add(bearingStart);
+
+                        const bearingEnd = new THREE.Mesh(bearingGeo, bearingMat.clone());
+                        bearingEnd.position.set(spanStartX + p.L - 0.4, bearingY, zPos);
+                        bearingEnd.name = `Appoggio_Campata${i}_N${b + 1}_End`;
+                        bearingEnd.userData = { tipo: "Appoggio", posizione: "Fine", trave: `T-${i + 1}-${b + 1}`, ID: bearingEnd.name };
+                        group.add(bearingEnd);
+                    }
+
+                    const bearingOffset = 0.4;
+                    const startX = bearingOffset;
+                    const endX = p.L - bearingOffset;
+                    const crossbeamPositions = [startX, endX];
+                    if (p.nCross > 0) {
+                        const distance = endX - startX;
+                        const step = distance / (p.nCross + 1);
+                        for (let k = 1; k <= p.nCross; k++) {
+                            crossbeamPositions.push(startX + (k * step));
+                        }
+                    }
+                    const cbWidth = spacing - beamWidth;
+                    const cbHeight = beamHeight * 0.8;
+                    const cbGeo = new THREE.BoxGeometry(0.4, cbHeight, cbWidth);
+                    crossbeamPositions.forEach((localX, idx) => {
+                        const cbX = spanStartX + localX;
+                        for (let b = 0; b < p.nMain - 1; b++) {
+                            const zCenter = startZ + (b * spacing) + (spacing / 2);
+                            const cb = new THREE.Mesh(cbGeo, material.clone());
+                            cb.position.set(cbX, deckY, zCenter);
+                            cb.castShadow = true;
+                            cb.name = `Traverso_Campata${i}_Pos${idx}_N${b}`;
+                            cb.userData = { tipo: "Traverso", posizione: `Campata ${i + 1}`, ID: cb.name };
+                            group.add(cb);
+                        }
+                    });
+                }
+            }
+        }
+
+        function generateTypeB(group, material, foundationMat, p) {
+            const pierThickness = 1.5;
+            const deckThickness = 1.5;
+            const totalLength = p.L * p.N;
+            for (let i = 0; i <= p.N; i++) {
+                const xPos = i * p.L;
+                const pierGeo = new THREE.BoxGeometry(pierThickness, p.H, p.W - 2);
+                const pier = new THREE.Mesh(pierGeo, material.clone());
+                pier.position.set(xPos, p.H / 2, 0);
+                pier.castShadow = true;
+                pier.name = `Pila_${i}`;
+                pier.userData = { tipo: "Pilone Snello", id: i + 1, altezza: p.H, ID: pier.name };
+                group.add(pier);
+                createFoundation(group, foundationMat, xPos, 0, pierThickness + 2, p.W + 2, p.hFond, `Fondazione_${i}`);
+            }
+            const deckGeo = new THREE.BoxGeometry(totalLength + 2, deckThickness, p.W);
+            const deck = new THREE.Mesh(deckGeo, material.clone());
+            deck.position.set(totalLength / 2, p.H + (deckThickness / 2), 0);
+            deck.castShadow = true;
+            deck.name = `Impalcato_Continuo`;
+            deck.userData = { tipo: "Impalcato Continuo", lunghezza: totalLength, ID: deck.name };
+            group.add(deck);
+            const crossbeamY = p.H + (deckThickness / 2) - (deckThickness / 2) - 0.4;
+            for (let i = 0; i < p.N; i++) {
+                const startX = i * p.L;
+                createCrossbeams(group, material, startX, p.L, crossbeamY, p.W, p.nCross, i);
+            }
+        }
+
+        function generateTypeC(group, material, foundationMat, p) {
+            const totalLength = p.L * p.N;
+            const deckThickness = 1.5;
+            const deckGeo = new THREE.BoxGeometry(totalLength, deckThickness, p.W);
+            const deck = new THREE.Mesh(deckGeo, material.clone());
+            deck.position.set(totalLength / 2, p.H + (deckThickness / 2), 0);
+            deck.castShadow = true;
+            deck.name = `Impalcato_Arco`;
+            deck.userData = { tipo: "Impalcato", schema: "Arco Via Superiore", lunghezza: totalLength, ID: deck.name };
+            group.add(deck);
+            const curve = new THREE.QuadraticBezierCurve3(
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(totalLength / 2, p.H * 2, 0),
+                new THREE.Vector3(totalLength, 0, 0)
+            );
+            const tubeGeo = new THREE.TubeGeometry(curve, 64, 1.5, 8, false);
+            const arch = new THREE.Mesh(tubeGeo, material.clone());
+            arch.castShadow = true;
+            arch.name = `Arco_Principale`;
+            arch.userData = { tipo: "Arco", materiale: "CLS Armato", luce: totalLength, ID: arch.name };
+            group.add(arch);
+            const strutCount = p.N * 3;
+            for (let i = 1; i <= strutCount; i++) {
+                const t = i / (strutCount + 1);
+                const pointOnCurve = curve.getPoint(t);
+                const xPos = pointOnCurve.x;
+                const yArch = pointOnCurve.y;
+                const yDeck = p.H;
+                const strutHeight = yDeck - yArch;
+                if (strutHeight > 0.5) {
+                    const strutGeo = new THREE.BoxGeometry(1, strutHeight, p.W - 2);
+                    const strut = new THREE.Mesh(strutGeo, material.clone());
+                    strut.position.set(xPos, yArch + (strutHeight / 2), 0);
+                    strut.castShadow = true;
+                    strut.name = `Montante_${i}`;
+                    strut.userData = { tipo: "Montante", id: i, altezza: strutHeight.toFixed(2), ID: strut.name };
+                    group.add(strut);
+                }
+            }
+            const abutWidth = 4;
+            const abut1 = new THREE.Mesh(new THREE.BoxGeometry(abutWidth, p.H, p.W), material.clone());
+            abut1.position.set(0, p.H / 2, 0);
+            abut1.name = `Spalla_Inizio`;
+            group.add(abut1);
+            createFoundation(group, foundationMat, 0, 0, abutWidth + 2, p.W + 2, p.hFond, `Fondazione_Spalla_Inizio`);
+            const abut2 = new THREE.Mesh(new THREE.BoxGeometry(abutWidth, p.H, p.W), material.clone());
+            abut2.position.set(totalLength, p.H / 2, 0);
+            abut2.name = `Spalla_Fine`;
+            group.add(abut2);
+            createFoundation(group, foundationMat, totalLength, 0, abutWidth + 2, p.W + 2, p.hFond, `Fondazione_Spalla_Fine`);
+            const crossbeamY = p.H - 0.4;
+            for (let i = 0; i < p.N; i++) {
+                const startX = i * p.L;
+                createCrossbeams(group, material, startX, p.L, crossbeamY, p.W, p.nCross, i);
+            }
+        }
+
+        function onMouseClick(event) {
+            // Raycast needs to ignore UI clicks, but since UI is on top, 
+            // standard DOM events usually block canvas clicks if on UI.
+            // We just need to make sure we calculate mouse pos relative to full window.
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(bridgeGroup.children);
+
+            if (intersects.length > 0) {
+                selectObject(intersects[0].object);
+            } else {
+                closeInspector();
+            }
+        }
+
+        function selectObject(object) {
+            if (selectedObject === object) return;
+            if (selectedObject) {
+                selectedObject.material.emissive.setHex(0x000000);
+            }
+            selectedObject = object;
+            selectedObject.material.emissive.setHex(HIGHLIGHT_COLOR);
+            selectedObject.material.emissiveIntensity = 0.5;
+            openInspector(selectedObject);
+        }
+
+        function closeInspector() {
+            if (selectedObject) {
+                selectedObject.material.emissive.setHex(0x000000);
+                selectedObject = null;
+            }
+            inspector.style.display = 'none';
+        }
+
+        function openInspector(object) {
+            inspector.style.display = 'block';
+            renderInspectorTable(object.userData);
+        }
+
+        function renderInspectorTable(data) {
+            inspectorTable.innerHTML = '';
+            for (const [key, value] of Object.entries(data)) {
+                const row = document.createElement('tr');
+                const th = document.createElement('th');
+                th.textContent = key;
+                const td = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = value;
+                input.addEventListener('change', (e) => { data[key] = e.target.value; });
+                td.appendChild(input);
+                row.appendChild(th);
+                row.appendChild(td);
+                inspectorTable.appendChild(row);
+            }
+        }
+
+        function addNewAttributeRow() {
+            if (!selectedObject) return;
+            const row = document.createElement('tr');
+            const th = document.createElement('th');
+            const keyInput = document.createElement('input');
+            keyInput.placeholder = "Nuova Chiave";
+            keyInput.style.fontWeight = "bold";
+            th.appendChild(keyInput);
+            const td = document.createElement('td');
+            const valInput = document.createElement('input');
+            valInput.placeholder = "Valore";
+            td.appendChild(valInput);
+            row.appendChild(th);
+            row.appendChild(td);
+            inspectorTable.appendChild(row);
+            keyInput.focus();
+            valInput.addEventListener('change', () => {
+                const key = keyInput.value.trim();
+                const val = valInput.value.trim();
+                if (key) {
+                    selectedObject.userData[key] = val;
+                    renderInspectorTable(selectedObject.userData);
+                }
+            });
+        }
+
+        function onResetClick() {
+            const spanLength = parseFloat(inputSpan.value) || 20;
+            const numSpans = parseInt(inputNumSpans.value) || 3;
+            const totalLength = spanLength * numSpans;
+            const centerX = totalLength / 2;
+
+            controls.reset();
+            camera.position.set(centerX, 30, totalLength * 0.8);
+            camera.lookAt(centerX, 0, 0);
+            controls.target.set(centerX, 0, 0);
+        }
+
+        function zoomCamera(delta) {
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            camera.position.addScaledVector(direction, delta);
+            controls.update();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
+
+</body>
+
+</html>
