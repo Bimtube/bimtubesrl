@@ -703,6 +703,7 @@
             if (!bridgeGroup) return;
 
             let updateCount = 0;
+            const totalRows = data.length;
 
             // Map data by ID for faster lookup
             const dataMap = {};
@@ -718,22 +719,18 @@
 
                     // Merge userData
                     Object.assign(child.userData, newData);
-
-                    // Remove internal ID from userData if redundant, or keep it.
-                    // Let's keep everything.
-
                     updateCount++;
                 }
             });
 
             if (updateCount > 0) {
-                alert(`${updateCount} elementi aggiornati con successo!`);
+                alert(`Dati abbinati per ${updateCount} elementi su ${totalRows} righe trovate.`);
                 // Refresh inspector if open
                 if (selectedObject) {
                     renderInspectorTable(selectedObject.userData);
                 }
             } else {
-                alert("Nessun elemento corrispondente trovato. Controlla gli ID nel file.");
+                alert(`Nessun elemento corrispondente trovato su ${totalRows} righe. Controlla gli ID nel file.`);
             }
         }
 
@@ -818,7 +815,7 @@
                 mesh.position.set(x, yPos, 0);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
-                const id = `Traverso_Campata${spanIndex}_N${i}`;
+                const id = `Traverso_C${spanIndex}_N${i}`;
                 mesh.name = id;
                 mesh.userData = { tipo: "Traverso", posizione: `X=${x.toFixed(1)}`, ID: id };
                 group.add(mesh);
@@ -885,20 +882,25 @@
                         const beam = new THREE.Mesh(beamGeo, material.clone());
                         beam.position.set(spanCenterX, deckY, zPos);
                         beam.castShadow = true;
-                        beam.name = `Trave_Campata${i}_N${b + 1}`;
+                        // Naming: Trave_C{X}_N{Y}
+                        const beamName = `Trave_C${i}_N${b + 1}`;
+                        beam.name = beamName;
                         beam.userData = { tipo: "Trave Principale", id: `T-${i + 1}-${b + 1}`, luce: p.L, ID: beam.name };
                         group.add(beam);
 
+                        // Bearings: Appoggio_P{X}_T{Y} (su Pila X, sotto Trave Y)
+                        // Start Bearing (at Pier i)
                         const bearingStart = new THREE.Mesh(bearingGeo, bearingMat.clone());
                         bearingStart.position.set(spanStartX + 0.4, bearingY, zPos);
-                        bearingStart.name = `Appoggio_Campata${i}_N${b + 1}_Start`;
-                        bearingStart.userData = { tipo: "Appoggio", posizione: "Inizio", trave: `T-${i + 1}-${b + 1}`, ID: bearingStart.name };
+                        bearingStart.name = `Appoggio_P${i}_${beamName}`;
+                        bearingStart.userData = { tipo: "Appoggio", posizione: "Inizio", trave: beamName, ID: bearingStart.name };
                         group.add(bearingStart);
 
+                        // End Bearing (at Pier i+1)
                         const bearingEnd = new THREE.Mesh(bearingGeo, bearingMat.clone());
                         bearingEnd.position.set(spanStartX + p.L - 0.4, bearingY, zPos);
-                        bearingEnd.name = `Appoggio_Campata${i}_N${b + 1}_End`;
-                        bearingEnd.userData = { tipo: "Appoggio", posizione: "Fine", trave: `T-${i + 1}-${b + 1}`, ID: bearingEnd.name };
+                        bearingEnd.name = `Appoggio_P${i + 1}_${beamName}`;
+                        bearingEnd.userData = { tipo: "Appoggio", posizione: "Fine", trave: beamName, ID: bearingEnd.name };
                         group.add(bearingEnd);
                     }
 
@@ -923,7 +925,7 @@
                             const cb = new THREE.Mesh(cbGeo, material.clone());
                             cb.position.set(cbX, deckY, zCenter);
                             cb.castShadow = true;
-                            cb.name = `Traverso_Campata${i}_Pos${idx}_N${b}`;
+                            cb.name = `Traverso_C${i}_Pos${idx}_N${b}`;
                             cb.userData = { tipo: "Traverso", posizione: `Campata ${i + 1}`, ID: cb.name };
                             group.add(cb);
                         }
